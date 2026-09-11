@@ -68,25 +68,35 @@ jobs:
       - name: Configure TanStack Start for static APK build
         working-directory: app
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("vite.config.ts")
-          s = p.read_text(encoding="utf-8")
-          old = "    tanstackStart(),"
-          new = '''    tanstackStart({
-              spa: {
-                prerender: {
-                  outputPath: "/index.html",
-                  crawlLinks: false,
-                  retryCount: 0,
-                },
+          node <<'NODE'
+          const fs = require('fs');
+
+          const file = 'vite.config.ts';
+          let s = fs.readFileSync(file, 'utf8');
+
+          const oldText = 'tanstackStart(),';
+
+          const newText = `tanstackStart({
+            spa: {
+              enabled: true,
+              prerender: {
+                outputPath: '/index.html',
+                crawlLinks: false,
+                retryCount: 1,
               },
-            }),'''
-          if old not in s:
-              raise SystemExit("Could not find tanstackStart() in vite.config.ts")
-          p.write_text(s.replace(old, new, 1), encoding="utf-8")
-          PY
-          grep -n -A10 -B2 "tanstackStart" vite.config.ts
+            },
+          }),`;
+
+          if (!s.includes(oldText)) {
+            console.error('Could not find tanstackStart() in vite.config.ts');
+            process.exit(1);
+          }
+
+          s = s.replace(oldText, newText);
+          fs.writeFileSync(file, s);
+
+          console.log('TanStack Start SPA mode enabled.');
+          NODE
 
       - name: Build static web app for Capacitor
         working-directory: app
@@ -100,25 +110,27 @@ jobs:
           rm -rf capacitor-web
           mkdir -p capacitor-web
 
-          if [ -f .output/public/index.html ]; then
-            cp -a .output/public/. capacitor-web/
-          elif [ -f .output/public/_shell.html ]; then
-            cp -a .output/public/. capacitor-web/
-            mv capacitor-web/_shell.html capacitor-web/index.html
-          elif [ -f dist/index.html ]; then
-            cp -a dist/. capacitor-web/
-          else
-            echo "ERROR: no static index.html found after TanStack Start build"
-            echo "Candidates under .output:"
-            find .output -maxdepth 5 -type f \( -name 'index.html' -o -name '_shell.html' \) -print 2>/dev/null || true
-            echo "Top-level build output:"
-            find .output -maxdepth 2 -type d -print 2>/dev/null || true
+          INDEX=$(find .output -type f -name 'index.html' -print -quit)
+
+          if [ -z "$INDEX" ]; then
+            echo "ERROR: no index.html found."
+            echo "TanStack output:"
+            find .output -maxdepth 4 -type f | sort | head -200
             exit 1
           fi
 
-          test -s capacitor-web/index.html
-          echo "Capacitor web root: $(pwd)/capacitor-web"
-          find capacitor-web -maxdepth 2 -type f | head -80
+          echo "Found static shell: $INDEX"
+
+          cp "$INDEX" capacitor-web/index.html
+
+          if [ -d ".output/public" ]; then
+            cp -r .output/public/. capacitor-web/
+          fi
+
+          echo "Capacitor web assets:"
+          find capacitor-web -maxdepth 3 -type f | sort | head -200
+
+          test -f capacitor-web/index.html
 
       - name: Install Capacitor
         working-directory: app
