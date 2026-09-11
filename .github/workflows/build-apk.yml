@@ -36,11 +36,30 @@ jobs:
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Extract optimized web app
-        run: |
-          rm -rf app
-          mkdir -p app
-          unzip -q source/xiaozhangben-optimized.zip -d app
-          test -f app/package.json
+  run: |
+    rm -rf app
+    mkdir -p app
+
+    echo "Searching for optimized web app ZIP..."
+    ZIP_FILE=$(find . -type f \( \
+      -name 'xiaozhangben-optimized.zip' \
+      -o -name 'xiaozhangben-optimized*.zip' \
+    \) -print -quit)
+
+    if [ -z "$ZIP_FILE" ]; then
+      echo "ERROR: xiaozhangben-optimized.zip was not found."
+      echo "Repository files:"
+      find . -maxdepth 3 -type f | sort | head -200
+      exit 1
+    fi
+
+    echo "Found: $ZIP_FILE"
+    unzip -q "$ZIP_FILE" -d app
+
+    echo "Checking extracted project..."
+    find app -maxdepth 2 -type f | sort | head -100
+
+    test -f app/package.json
 
       - name: Install web dependencies
         working-directory: app
